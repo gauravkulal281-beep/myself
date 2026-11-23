@@ -1,0 +1,239 @@
+{
+  "name": "IMS · speech",
+  "active": false,
+  "nodes": [
+    {
+      "id": "34c6ed27-8d4e-44ab-8d40-d5f175ac8402",
+      "name": "Setup instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -360
+      ],
+      "parameters": {
+        "width": 660,
+        "height": 250,
+        "content": "## IMS · speech workflow\n1. In the Webhook node, select a Header Auth credential named X-IMS-Secret. Set the same secret as N8N_WEBHOOK_SECRET in IMS.\n2. For the provider HTTP node, choose a different Header Auth credential: xi-api-key (ElevenLabs). Choose available voice IDs in the preparation node.\n3. Activate this workflow and copy its production HTTPS webhook URL into N8N_SPEECH_WEBHOOK_URL.\n4. Test with non-sensitive lesson content before student use. Disable saving successful execution data."
+      }
+    },
+    {
+      "id": "96cf81fd-c042-4818-a6fc-cae4b3fc3061",
+      "name": "IMS webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ims-speech",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "fa6b2699-840c-4b94-9707-c7ecdeb0f00a"
+    },
+    {
+      "id": "c9e312aa-c54b-452f-ab52-b0fe080fe035",
+      "name": "Validate and prepare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const b=$json.body||{};const text=(v,n)=>typeof v==='string'&&v.trim().length>0&&v.length<=n;if(!(text(b.text,4000)&&['Adam','Rachel'].includes(b.voice)))return [{json:{valid:false}}];return [{json:{valid:true,voice:b.voice==='Adam'?'pNInz6obpgDQGcFmaJgB':'21m00Tcm4TlvDq8ikWAM',payload:{text:b.text,model_id:'eleven_multilingual_v2'}}}];"
+      }
+    },
+    {
+      "id": "a47b8b4a-2d13-41a2-8f6b-a6bb1a765b37",
+      "name": "Valid request?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a5ed6c22-86a2-4494-92e0-403f9086b8fa",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "4715aa03-6c96-43c8-ad60-182f4fb6c279",
+      "name": "ElevenLabs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.elevenlabs.io/v1/text-to-speech/{{ $json.voice }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
+        "options": {
+          "timeout": 70000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "e8e926b0-8e5a-4666-bb30-24574dd90813",
+      "name": "Return result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "respondWith": "binary",
+        "responseDataSource": "set",
+        "inputFieldName": "data",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "audio/mpeg"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "91478a00-149e-44c6-9121-3e92cf1e3379",
+      "name": "Invalid input",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        660,
+        180
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"error\":\"Invalid or missing study content.\"}",
+        "options": {
+          "responseCode": 400
+        }
+      }
+    },
+    {
+      "id": "ba4e91ad-ee90-4928-8605-2ecfc6fec54b",
+      "name": "Service unavailable",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1100,
+        100
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"error\":\"The provider could not complete this request.\"}",
+        "options": {
+          "responseCode": 502
+        }
+      }
+    }
+  ],
+  "connections": {
+    "IMS webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate and prepare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and prepare": {
+      "main": [
+        [
+          {
+            "node": "Valid request?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid request?": {
+      "main": [
+        [
+          {
+            "node": "ElevenLabs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ElevenLabs": {
+      "main": [
+        [
+          {
+            "node": "Return result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Service unavailable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none"
+  }
+}
